@@ -9,7 +9,7 @@ typedef uint48_t des_key_ring[4][DES_ROUNDS];
 #define DES5 0x20
 #define DES7 0x30
 
-uint64_t des_block(uint64_t block, uint64_t k[DES_ROUNDS]);
+uint64_t des_block(uint64_t block, const uint64_t k[DES_ROUNDS]);
 uint64_t des3_block(uint64_t block, des_key_ring k);
 uint64_t des5_block(uint64_t block, des_key_ring k);
 uint64_t des7_block(uint64_t block, des_key_ring k);

@@ -1,38 +1,47 @@
 #include <stdio.h>
 #include "crypto.h"
 
+#define get_bit(x,bit) ( ( (x) >> (bit) ) & 1 )
 #define swap(x, y) {x^=y;y^=x;x^=y;}
 
 static const uint8_t
+/* Initial permutation */
 ip[64] = {
    6, 14, 22, 30, 38, 46, 54, 62,  4, 12, 20, 28, 36, 44, 52, 60,
    2, 10, 18, 26, 34, 42, 50, 58,  0,  8, 16, 24, 32, 40, 48, 56,
    7, 15, 23, 31, 39, 47, 55, 63,  5, 13, 21, 29, 37, 45, 53, 61,
    3, 11, 19, 27, 35, 43, 51, 59,  1,  9, 17, 25, 33, 41, 49, 57},
+/* Final permutation */
 ipi[64] = {
   24, 56, 16, 48,  8, 40,  0, 32, 25, 57, 17, 49,  9, 41,  1, 33,
   26, 58, 18, 50, 10, 42,  2, 34, 27, 59, 19, 51, 11, 43,  3, 35,
   28, 60, 20, 52, 12, 44,  4, 36, 29, 61, 21, 53, 13, 45,  5, 37,
   30, 62, 22, 54, 14, 46,  6, 38, 31, 63, 23, 55, 15, 47,  7, 39},
+/* Expansion function */
 e[48] = {
    0, 31, 30, 29, 28, 27, 28, 27, 26, 25, 24, 23,
   24, 23, 22, 21, 20, 19, 20, 19, 18, 17, 16, 15,
   16, 15, 14, 13, 12, 11, 12, 11, 10,  9,  8,  7,
    8,  7,  6,  5,  4,  3,  4,  3,  2,  1,  0, 31},
+/* Permutation */
 p[32] = {
   16, 25, 12, 11,  3, 20,  4, 15, 31, 17,  9,  6, 27, 14,  1, 22,
   30, 24,  8, 18,  0,  5, 29, 23, 13, 19,  2, 26, 10, 21, 28,  7},
+/* Permuted choice 1 - Left */
 pc1l[28] = {
    7, 15, 23, 31, 39, 47, 55, 63,  6, 14, 22, 30, 38, 46,
   54, 62,  5, 13, 21, 29, 37, 45, 53, 61,  4, 12, 20, 28},
+/* Permuted choice 1 - Right */
 pc1r[28] = {
    1,  9, 17, 25, 33, 41, 49, 57,  2, 10, 18, 26, 34, 42,
   50, 58,  3, 11, 19, 27, 35, 43, 51, 59, 36, 44, 52, 60},
+/* Permuted choice 2 */
 pc2[48] = {
   42, 39, 45, 32, 55, 51, 53, 28, 41, 50, 35, 46,
   33, 37, 44, 52, 30, 48, 40, 49, 29, 36, 43, 54,
   15,  4, 25, 19,  9,  1, 26, 16,  5, 11, 23,  8,
   12,  7, 17,  0, 22,  3, 10, 14,  6, 20, 27, 24},
+/* Substitution boxes */
 s_box[8][64] = {
   {14,  0,  4, 15, 13,  7,  1,  4,  2, 14, 15,  2, 11, 13,  8,  1,
     3, 10, 10,  6,  6, 12, 12, 11,  5,  9,  9,  5,  0,  3,  7,  8,
@@ -67,9 +76,16 @@ s_box[8][64] = {
     7,  2, 11,  1,  4, 14,  1,  7,  9,  4, 12, 10, 14,  8,  2, 13,
     0, 15,  6, 12, 10,  9, 13,  0, 15,  3,  3,  5,  5,  6,  8, 11}
 },
+/* Key schedule rotations */
 rot[16] = {1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1};
 
-#define get_bit(x,bit) ( ( (x) >> (bit) ) & 1 )
+/* Helper function to re-order the bits in a 64-bit int.
+   b  initial value.
+   o  array of bit placements. The o[0]th bit in b will be the high-
+      order bit in the output, the o[1]th bit will be second highest,
+      etc.
+   c  the number of bits described in o
+ */
 uint64_t reorder(uint64_t b, const uint8_t o[], uint8_t c) {
   uint8_t i;
   uint64_t r = 0;
@@ -79,6 +95,7 @@ uint64_t reorder(uint64_t b, const uint8_t o[], uint8_t c) {
   return r;
 }
 
+/* The Feistel function */
 uint32_t F(uint32_t block, uint48_t key) {
   uint8_t i;
   key ^= reorder(block, e, 48);
@@ -90,12 +107,16 @@ uint32_t F(uint32_t block, uint48_t key) {
   return block;
 }
 
+/* Check that a key is valid. Performs a parity check per the DES spec.
+   Returns false on success, true on failure.
+ */
 int validate_key(uint64_t key) {
   int i;
   const uint64_t t = 0x0101010101010101LLU;
   for (i = 0; i < 3; i++) key ^= key >> (1 << i);
   return (key & t) != t;
 }
+/* Generate the key schedule that will be used */
 void gen_key(uint64_t key, uint48_t key_ring[DES_ROUNDS], uint8_t mode) {
   uint8_t i;
   uint32_t L, R;
@@ -104,13 +125,15 @@ void gen_key(uint64_t key, uint48_t key_ring[DES_ROUNDS], uint8_t mode) {
   for (i = 0; i < DES_ROUNDS; i++) {
     L = ((L << rot[i]) | (L >> (28-rot[i]))) & 0x0fffffff;
     R = ((R << rot[i]) | (R >> (28-rot[i]))) & 0x0fffffff;
-    if ((mode & CRYPT_MODE_MASK) == CRYPT_DECRYPT && ((mode & CRYPT_BLOCK_MASK) == CRYPT_ECB || (mode & CRYPT_BLOCK_MASK) == CRYPT_CBC))
+    if ((mode & CRYPT_MODE_MASK) == CRYPT_DECRYPT
+     && ((mode & CRYPT_BLOCK_MASK) == CRYPT_ECB || (mode & CRYPT_BLOCK_MASK) == CRYPT_CBC))
       key_ring[DES_ROUNDS-1-i] = reorder( ((uint64_t)L << 28) | R, pc2, 48 );
     else
       key_ring[i] = reorder( ((uint64_t)L << 28) | R, pc2, 48 );
   }
 }
 
+/* Generate the all of the key schedules that will be used */
 void gen_key_ring(uint64_t key[], des_key_ring ring, uint8_t mode) {
   switch (mode & DES_MASK) {
     case DES7:
@@ -124,30 +147,53 @@ void gen_key_ring(uint64_t key[], des_key_ring ring, uint8_t mode) {
   }
 }
 
-uint64_t des_block(uint64_t block, uint48_t k[DES_ROUNDS]) {
+/* Encrypt or decrypt a single block */
+uint64_t des_block(uint64_t block, const uint48_t k[DES_ROUNDS]) {
   uint32_t L, R;
   uint8_t i;
   block = reorder(block, ip, 64);
   L = (block >> 32) & 0xffffffff;
   R = block & 0xffffffff;
-  for (i = 0; i < DES_ROUNDS; i+=2) {
+  for (i = 0; i < DES_ROUNDS; i++) {
     L ^= F(R, k[i]);
-    R ^= F(L, k[i+1]);
+    swap(L, R);
   }
   block = ((uint64_t)R << 32) | L;
   block = reorder(block, ipi, 64);
   return block;
 }
+/* Encrypt or decrypt a single block using DES3 */
 uint64_t des3_block(uint64_t block, des_key_ring key_ring) {
-  return des_block(des_block(des_block(block, key_ring[0]), key_ring[1]), key_ring[0]);
+  uint64_t result = block;
+  result = des_block(result, key_ring[0]);
+  result = des_block(result, key_ring[1]);
+  result = des_block(result, key_ring[0]);
+  return result;
 }
+/* Encrypt or decrypt a single block using DES5 */
 uint64_t des5_block(uint64_t block, des_key_ring key_ring) {
-  return des_block(des_block(des_block(des_block(des_block(block, key_ring[0]), key_ring[1]), key_ring[2]), key_ring[1]), key_ring[0]);
+  uint64_t result = block;
+  result = des_block(result, key_ring[0]);
+  result = des_block(result, key_ring[1]);
+  result = des_block(result, key_ring[2]);
+  result = des_block(result, key_ring[1]);
+  result = des_block(result, key_ring[0]);
+  return result;
 }
+/* Encrypt or decrypt a single block using DES7 */
 uint64_t des7_block(uint64_t block, des_key_ring key_ring) {
-  return des_block(des_block(des_block(des_block(des_block(des_block(des_block(block, key_ring[0]), key_ring[1]), key_ring[2]), key_ring[3]), key_ring[2]), key_ring[1]), key_ring[0]);
+  uint64_t result = block;
+  result = des_block(result, key_ring[0]);
+  result = des_block(result, key_ring[1]);
+  result = des_block(result, key_ring[2]);
+  result = des_block(result, key_ring[3]);
+  result = des_block(result, key_ring[2]);
+  result = des_block(result, key_ring[1]);
+  result = des_block(result, key_ring[0]);
+  return result;
 }
 
+/* Initialize a DES block_cipher */
 int init_des_stream(uint64_t key[], uint64_t iv, uint8_t mode, des_key_ring k, struct block_cipher *bc) {
 #ifndef DISABLE_PARITY_CHECK
   switch (mode & DES_MASK) {
@@ -164,6 +210,7 @@ int init_des_stream(uint64_t key[], uint64_t iv, uint8_t mode, des_key_ring k, s
   return 0;
 }
 
+/* Encrypt or decrypt the next block in a stream */
 uint64_t des_stream(uint64_t in, des_key_ring k, struct block_cipher *bc) {
   bc->in = in;
   switch (bc->mode & DES_MASK) {
@@ -183,6 +230,16 @@ uint64_t des_stream(uint64_t in, des_key_ring k, struct block_cipher *bc) {
   return block_cipher_post(bc);
 }
 
+/* Encrypt or decrypt the specified fixed-length message
+   count  the length of the message to encrypt/decrypt
+   in     the message to encrypt/decrypt
+   key    the key(s) to use; number of keys is indicated by mode
+   iv     the initialization vector
+   out    the encrypted or decrypted result
+   mode   the encryption mode
+   Returns 0 if successful, 1 if there was a parity-check failure
+   on one of the keys (and DISABLE_PARITY_CHECK was not defined)
+ */
 int des(uint64_t count, const uint64_t in[], uint64_t key[], uint64_t iv, uint64_t out[], uint8_t mode) {
   uint64_t i;
   des_key_ring k;
@@ -192,32 +249,41 @@ int des(uint64_t count, const uint64_t in[], uint64_t key[], uint64_t iv, uint64
     out[i] = des_stream(in[i], k, &bc);
   return 0;
 }
+/* Encrypt or decrypt an entire file
+   i     the input file descriptor
+   key   the key(s) to use; number of keys is indicated by mode
+   iv    the initialization vector
+   o     the output file descriptor
+   mode  the encryption mode
+   Returns 0 if successful, 1 if there was a parity-check failure
+   on one of the keys (and DISABLE_PARITY_CHECK was not defined)
+ */
 int des_file(FILE *i, uint64_t key[], uint64_t iv, FILE *o, uint8_t mode) {
-  uint64_t b, lb = 0;
+  uint64_t bl, last = 0;
   des_key_ring k;
   struct block_cipher bc;
   if (init_des_stream(key, iv, mode, k, &bc)) {
     fprintf(stderr, "Error initializing DES key ring.\n");
     return 1;
   }
-  if (read_block(&b, i, bc.block_size)) {
-    lb = b;
-    while (read_block(&b, i, bc.block_size)) {
-      if (write_block(des_stream(lb, k, &bc), o, bc.block_size, 0)) {
+  if (read_block(&bl, i, bc.block_size)) {
+    last = bl;
+    while (read_block(&bl, i, bc.block_size)) {
+      if (write_block(des_stream(last, k, &bc), o, bc.block_size, 0)) {
         fprintf(stderr, "Error writing block.\n");
         return 1;
       }
-      lb = b;
+      last = bl;
     }
     if ((bc.mode & CRYPT_MODE_MASK) == CRYPT_ENCRYPT) {
-      if (write_block(des_stream(lb, k, &bc), o, bc.block_size, 0)) {
+      if (write_block(des_stream(last, k, &bc), o, bc.block_size, 0)) {
         fprintf(stderr, "Error writing block.\n");
         return 1;
       }
-      lb = b;
+      last = bl;
     }
   }
-  if (write_block(des_stream(lb, k, &bc), o, bc.block_size, (bc.mode & CRYPT_MODE_MASK) == CRYPT_DECRYPT)) {
+  if (write_block(des_stream(last, k, &bc), o, bc.block_size, (bc.mode & CRYPT_MODE_MASK) == CRYPT_DECRYPT)) {
     fprintf(stderr, "Error writing block.\n");
     return 1;
   }

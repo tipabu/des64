@@ -14,9 +14,7 @@ int test_des() {
   int i;
   for (i=0;  i<8; i++) {
     des(1, &p, &p, 0, &q, CRYPT_ECB | DES1 | CRYPT_ENCRYPT);
-    printf("%016" PRIX64 "\n", q);
     des(1, &q, &q, 0, &p, CRYPT_ECB | DES1 | CRYPT_DECRYPT);
-    printf("%016" PRIX64 "\n", p);
   }
   return p != 0x1b1a2ddb4c642438LLU;
 }

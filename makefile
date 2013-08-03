@@ -23,6 +23,7 @@ all     : $(PROGRAMS) $(DEBUGGERS)
 $(patsubst %,$(ODIR)/%.o,$(DEPS)) : $(ODIR)/%.o : $(SDIR)/%.c $(IDIR)/crypto.h
 $(ODIR)/%.o : LIBS=
 $(ODIR)/%.o : $(SDIR)/%.c
+	@mkdir -p $(@D)
 	$(CC) $(CFLAGS) -c -o $@ $<
 $(ODIR)/efile.o : DEFS=ENCRYPT
 $(ODIR)/efile.o : $(SDIR)/crypt_file.c
