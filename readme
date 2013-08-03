@@ -1,0 +1,8 @@
+self_test
+  Series of tests to ensure the reversibility of the algorithms.
+  The DES self test and CBC validate against known plaintexts.
+  Note that the DES self test requires that the parity check be disabled.
+test_batch
+  Takes key, plaintext, ciphertext sets from stdin (or files listed on the commandline) in hex.
+  Several sample files are given in the test/ directory, taken from
+  http://www.skepticfiles.org/faq/testdes.htm
